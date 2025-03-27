@@ -12,6 +12,7 @@
       text-align: center;
       background: #f4f4f4;
       padding: 40px;
+      margin: 0;
     }
     h1 {
       font-size: 2rem;
@@ -129,7 +130,6 @@
     selfieSegmentation.onResults((results) => {
       lastResults = results;
       if (!isLive) return;
-
       drawFrame(results);
     });
 
@@ -140,9 +140,10 @@
       ctxBg.clearRect(0, 0, w, h);
       ctxFg.clearRect(0, 0, w, h);
 
+      // רקע
       if (backgroundMode === 'blur') {
         ctxBg.filter = 'blur(12px)';
-        ctxBg.drawImage(results.image, 0, 0, w, h);
+        drawImageCover(ctxBg, results.image, w, h);
         ctxBg.filter = 'none';
       } else if (backgroundMode === 'custom' && backgroundImage) {
         ctxBg.drawImage(backgroundImage, 0, 0, w, h);
@@ -155,10 +156,30 @@
         ctxBg.fillRect(0, 0, w, h);
       }
 
+      // מסכה
       ctxFg.drawImage(results.segmentationMask, 0, 0, w, h);
       ctxFg.globalCompositeOperation = 'source-in';
-      ctxFg.drawImage(results.image, 0, 0, w, h);
+      drawImageCover(ctxFg, results.image, w, h);
       ctxFg.globalCompositeOperation = 'source-over';
+    }
+
+    function drawImageCover(ctx, image, canvasWidth, canvasHeight) {
+      const videoAspect = image.width / image.height;
+      const canvasAspect = canvasWidth / canvasHeight;
+      let drawWidth = canvasWidth;
+      let drawHeight = canvasHeight;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      if (videoAspect > canvasAspect) {
+        drawWidth = canvasHeight * videoAspect;
+        offsetX = -(drawWidth - canvasWidth) / 2;
+      } else {
+        drawHeight = canvasWidth / videoAspect;
+        offsetY = -(drawHeight - canvasHeight) / 2;
+      }
+
+      ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
     }
 
     const camera = new Camera(video, {
