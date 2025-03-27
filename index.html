@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>צילום עם רקע מטושטש מקצועי</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f4f4f4;
+      padding: 40px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 2rem;
+    }
+    #wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      aspect-ratio: 4 / 3;
+    }
+    #canvasBg, #canvasFg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #canvasFg {
+      z-index: 2;
+    }
+    .buttons {
+      margin-top: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+    }
+    button, label.upload-btn, a.download-btn {
+      padding: 12px 24px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      color: white;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+      transition: background 0.3s ease;
+    }
+    .green { background-color: #4caf50; }
+    .blue { background-color: #2196f3; }
+    .gray { background-color: #777; }
+    .red { background-color: #f44336; }
+    .purple { background-color: #9c27b0; }
+    .download-btn { background-color: #388e3c; }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    @media (max-width: 600px) {
+      body { padding: 20px; }
+      h1 { font-size: 1.6rem; }
+      button { font-size: 0.95rem; padding: 10px 18px; }
+      .buttons { gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>צילום עם רקע מותאם בלייב</h1>
+
+  <div id="wrapper">
+    <canvas id="canvasBg" width="640" height="480"></canvas>
+    <canvas id="canvasFg" width="640" height="480"></canvas>
+  </div>
+  <video id="video" autoplay playsinline muted style="display:none;" width="640" height="480"></video>
+
+  <div class="buttons" id="backgroundOptions">
+    <button class="gray" onclick="setBackgroundMode('blur')">רקע מטושטש</button>
+    <button class="blue" onclick="setBackgroundMode('blue')">רקע כחול</button>
+    <button class="green" onclick="setBackgroundMode('green')">רקע ירוק</button>
+    <button class="red" onclick="setBackgroundMode('red')">רקע אדום</button>
+    <label class="upload-btn purple">
+      העלאת רקע
+      <input type="file" accept="image/*" onchange="handleBackgroundUpload(event)" />
+    </label>
+  </div>
+
+  <div class="buttons" id="beforeCapture">
+    <button class="green" onclick="takePhoto()">📸 צילום</button>
+  </div>
+
+  <div class="buttons" id="afterCapture" style="display: none; flex-direction: column; gap: 16px;">
+    <a id="downloadBtn" class="download-btn" download="photo.png">📥 הורדת תמונה</a>
+    <button class="blue" onclick="retakePhoto()">🔄 צילום מחדש</button>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvasFg = document.getElementById('canvasFg');
+    const canvasBg = document.getElementById('canvasBg');
+    const ctxFg = canvasFg.getContext('2d');
+    const ctxBg = canvasBg.getContext('2d');
+    const beforeCapture = document.getElementById('beforeCapture');
+    const afterCapture = document.getElementById('afterCapture');
+    const backgroundOptions = document.getElementById('backgroundOptions');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let backgroundMode = 'blur';
+    let backgroundImage = null;
+    let isLive = true;
+
+    const selfieSegmentation = new SelfieSegmentation({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+    });
+    selfieSegmentation.setOptions({ modelSelection: 1 });
+
+    selfieSegmentation.onResults((results) => {
+      const w = canvasFg.width;
+      const h = canvasFg.height;
+
+      if (backgroundMode === 'blur') {
+        ctxBg.filter = 'blur(12px)';
+        ctxBg.drawImage(results.image, 0, 0, w, h);
+        ctxBg.filter = 'none';
+      } else if (backgroundMode === 'custom' && backgroundImage) {
+        ctxBg.drawImage(backgroundImage, 0, 0, w, h);
+      } else {
+        let color = '#ccc';
+        if (backgroundMode === 'blue') color = '#6495ED';
+        else if (backgroundMode === 'green') color = '#4CAF50';
+        else if (backgroundMode === 'red') color = '#F44336';
+        ctxBg.fillStyle = color;
+        ctxBg.fillRect(0, 0, w, h);
+      }
+
+      ctxFg.clearRect(0, 0, w, h);
+      ctxFg.drawImage(results.segmentationMask, 0, 0, w, h);
+      ctxFg.globalCompositeOperation = 'source-in';
+      ctxFg.drawImage(results.image, 0, 0, w, h);
+      ctxFg.globalCompositeOperation = 'source-over';
+    });
+
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        if (isLive) {
+          await selfieSegmentation.send({ image: video });
+        }
+      },
+      width: 640,
+      height: 480,
+    });
+
+    function setBackgroundMode(mode) {
+      backgroundMode = mode;
+    }
+
+    function handleBackgroundUpload(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const img = new Image();
+        img.onload = () => {
+          backgroundImage = img;
+          backgroundMode = 'custom';
+        };
+        img.src = URL.createObjectURL(file);
+      }
+    }
+
+    function takePhoto() {
+      isLive = false;
+      beforeCapture.style.display = 'none';
+      backgroundOptions.style.display = 'none';
+      afterCapture.style.display = 'flex';
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvasFg.width;
+      tempCanvas.height = canvasFg.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(canvasBg, 0, 0);
+      tempCtx.drawImage(canvasFg, 0, 0);
+
+      tempCanvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        downloadBtn.href = url;
+      });
+    }
+
+    function retakePhoto() {
+      isLive = true;
+      afterCapture.style.display = 'none';
+      beforeCapture.style.display = 'flex';
+      backgroundOptions.style.display = 'flex';
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          camera.start();
+        };
+      }).catch(err => {
+        alert("לא הצלחנו להפעיל את המצלמה: " + err.message);
+      });
+    });
+  </script>
+</body>
+</html>
