@@ -25,23 +25,15 @@
       border-radius: 16px;
       overflow: hidden;
       box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      aspect-ratio: 4 / 3;
     }
     #canvasBg, #canvasFg {
       width: 100%;
-      height: auto;
+      height: 100%;
       display: block;
-    }
-    #canvasBg {
       position: absolute;
       top: 0;
       left: 0;
-      z-index: 1;
-    }
-    #canvasFg {
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 2;
     }
     .buttons {
       margin-top: 24px;
@@ -80,14 +72,6 @@
       h1 { font-size: 1.6rem; }
       button { font-size: 0.95rem; padding: 10px 18px; }
       .buttons { gap: 10px; }
-
-      #wrapper {
-        aspect-ratio: auto;
-      }
-      #canvasBg, #canvasFg {
-        height: auto;
-        aspect-ratio: 4 / 3;
-      }
     }
   </style>
 </head>
@@ -140,9 +124,21 @@
     });
     selfieSegmentation.setOptions({ modelSelection: 1 });
 
+    let lastResults = null;
+
     selfieSegmentation.onResults((results) => {
+      lastResults = results;
+      if (!isLive) return;
+
+      drawFrame(results);
+    });
+
+    function drawFrame(results) {
       const w = canvasFg.width;
       const h = canvasFg.height;
+
+      ctxBg.clearRect(0, 0, w, h);
+      ctxFg.clearRect(0, 0, w, h);
 
       if (backgroundMode === 'blur') {
         ctxBg.filter = 'blur(12px)';
@@ -159,18 +155,15 @@
         ctxBg.fillRect(0, 0, w, h);
       }
 
-      ctxFg.clearRect(0, 0, w, h);
       ctxFg.drawImage(results.segmentationMask, 0, 0, w, h);
       ctxFg.globalCompositeOperation = 'source-in';
       ctxFg.drawImage(results.image, 0, 0, w, h);
       ctxFg.globalCompositeOperation = 'source-over';
-    });
+    }
 
     const camera = new Camera(video, {
       onFrame: async () => {
-        if (isLive) {
-          await selfieSegmentation.send({ image: video });
-        }
+        await selfieSegmentation.send({ image: video });
       },
       width: 640,
       height: 480,
@@ -198,17 +191,21 @@
       backgroundOptions.style.display = 'none';
       afterCapture.style.display = 'flex';
 
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = canvasFg.width;
-      tempCanvas.height = canvasFg.height;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(canvasBg, 0, 0);
-      tempCtx.drawImage(canvasFg, 0, 0);
+      if (lastResults) {
+        drawFrame(lastResults);
 
-      tempCanvas.toBlob(blob => {
-        const url = URL.createObjectURL(blob);
-        downloadBtn.href = url;
-      });
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvasFg.width;
+        tempCanvas.height = canvasFg.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(canvasBg, 0, 0);
+        tempCtx.drawImage(canvasFg, 0, 0);
+
+        tempCanvas.toBlob(blob => {
+          const url = URL.createObjectURL(blob);
+          downloadBtn.href = url;
+        });
+      }
     }
 
     function retakePhoto() {
