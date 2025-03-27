@@ -123,7 +123,7 @@
     const selfieSegmentation = new SelfieSegmentation({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
     });
-    selfieSegmentation.setOptions({ modelSelection: 1 });
+    selfieSegmentation.setOptions({ modelSelection: 0, selfieMode:true });
 
     let lastResults = null;
 
